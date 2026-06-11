@@ -24,6 +24,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { generateReport } = require("./report-generator");
+const { generatePptx }   = require("./report-pptx");
 
 /* ============ Google Sheets API — كتابة البيانات ============ */
 const GSERVICE = (() => {
@@ -667,23 +668,36 @@ const server=http.createServer(async (req,res)=>{
     if(req.method==="GET" && url==="/api/admin-check")
       return sendJson(res,200,{authed:isAuthed(req), isAdmin:isAdmin(req)});
 
-    // ===== توليد التقارير =====
+    // ===== توليد التقارير (PDF أو PPTX) =====
     if(url.startsWith("/api/report") && req.method==="POST"){
       if(!isAuthed(req)) return sendJson(res,401,{error:"غير مصرّح"});
       let body={};
       const raw=await readBody(req);
       try{ body=raw?JSON.parse(raw):{}; }catch(e){ return sendJson(res,400,{error:"طلب غير صالح"}); }
-      const reportType = body.type || "comprehensive";
-      // اسحب أحدث بيانات من الشيت قبل التوليد — يضمن ظهور أي عنصر جديد في التقرير
+      const reportType   = body.type   || "comprehensive";
+      const reportFormat = body.format || "pdf";
       await refreshFromSheet();
       if(!liveState) return sendJson(res,503,{error:"البيانات غير متاحة بعد"});
+      const dateStr = new Date().toISOString().slice(0,10);
+      const trackLabel = reportType==="comprehensive"?"Comprehensive":reportType;
+      const fileName = `KAGA-${trackLabel}-${dateStr}`;
       try{
-        const buf = await generateReport(reportType, liveState);
-        res.writeHead(200,{
-          "Content-Type":"text/html; charset=utf-8",
-          "Cache-Control":"no-store, no-cache"
-        });
-        return res.end(buf);
+        if(reportFormat === "pptx"){
+          const buf = await generatePptx(reportType, liveState);
+          res.writeHead(200,{
+            "Content-Type":"application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "Content-Disposition":`attachment; filename="${fileName}.pptx"`,
+            "Cache-Control":"no-store, no-cache"
+          });
+          return res.end(buf);
+        } else {
+          const buf = await generateReport(reportType, liveState);
+          res.writeHead(200,{
+            "Content-Type":"text/html; charset=utf-8",
+            "Cache-Control":"no-store, no-cache"
+          });
+          return res.end(buf);
+        }
       }catch(e){
         console.error("خطأ في توليد التقرير:", e);
         return sendJson(res,500,{error:"فشل توليد التقرير: "+e.message});

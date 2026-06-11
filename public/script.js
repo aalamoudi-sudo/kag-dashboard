@@ -1970,63 +1970,195 @@ setTimeout(function(){
 })();
 
 // ============================================================
-// تصدير التقارير
+// تصدير التقارير — PDF و PPTX
 // ============================================================
 (function(){
-  function bindReportExport(){
-    const btns = document.querySelectorAll("[data-report-type]");
-    const statusEl = document.getElementById("reportExportStatus");
-    if(!btns.length) return;
 
-    btns.forEach(function(btn){
-      btn.addEventListener("click", async function(){
-        const type = btn.dataset.reportType;
-        const label = btn.textContent.trim();
+  // نافذة اختيار نوع التقرير والصيغة
+  function showReportModal(){
+    let overlay = document.getElementById("reportModal");
+    if(overlay){ overlay.style.display="flex"; return; }
 
-        // تعطيل الأزرار أثناء التوليد
-        btns.forEach(b => b.disabled = true);
-        if(statusEl){ statusEl.style.display="block"; statusEl.textContent = "⏳ جارٍ توليد التقرير..."; }
+    overlay = document.createElement("div");
+    overlay.id = "reportModal";
+    overlay.style.cssText = "display:flex;position:fixed;inset:0;z-index:9999;background:rgba(5,12,24,.75);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:20px;direction:rtl";
 
-        try{
-          const res = await fetch("/api/report", {
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            credentials:"include",
-            body:JSON.stringify({ type, state })
-          });
+    overlay.innerHTML = `
+<div style="width:min(560px,94vw);background:#0D1B2A;border:1px solid rgba(201,168,76,.4);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.5);padding:26px;font-family:inherit;color:#EAF0F7">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+    <h3 style="font-size:1.05rem;font-weight:800;color:#C9A84C;margin:0">📊 تصدير التقرير</h3>
+    <button id="reportModalClose" style="background:transparent;border:none;color:rgba(255,255,255,.5);font-size:1.2rem;cursor:pointer;line-height:1">✕</button>
+  </div>
 
-          if(!res.ok){
-            const err = await res.json().catch(()=>({error:"خطأ غير معروف"}));
-            throw new Error(err.error || res.status);
-          }
+  <p style="font-size:.82rem;color:rgba(255,255,255,.6);margin-bottom:18px">اختر نوع التقرير والصيغة</p>
 
-          // فتح التقرير HTML في نافذة جديدة
+  <!-- نوع التقرير -->
+  <div style="margin-bottom:18px">
+    <div style="font-size:.75rem;font-weight:700;color:rgba(255,255,255,.5);margin-bottom:10px;letter-spacing:.3px">نوع التقرير</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px" id="reportTypeGrid">
+      ${[
+        {v:"comprehensive",l:"شامل",sub:"المسارات الأربعة"},
+        {v:"أ",l:"مسار أ",sub:"التخطيط والتنسيق"},
+        {v:"ب",l:"مسار ب",sub:"التواصل والتسويق"},
+        {v:"ج",l:"مسار ج",sub:"الفعاليات"},
+        {v:"د",l:"مسار د",sub:"تجهيز الحديقة"},
+      ].map(t=>`
+        <button class="rtype-btn" data-val="${t.v}" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:9px;padding:10px 8px;cursor:pointer;color:#EAF0F7;font-family:inherit;text-align:center;transition:.15s">
+          <div style="font-size:.85rem;font-weight:700">${t.l}</div>
+          <div style="font-size:.65rem;color:rgba(255,255,255,.45);margin-top:2px">${t.sub}</div>
+        </button>`).join("")}
+    </div>
+  </div>
+
+  <!-- صيغة التصدير -->
+  <div style="margin-bottom:22px">
+    <div style="font-size:.75rem;font-weight:700;color:rgba(255,255,255,.5);margin-bottom:10px;letter-spacing:.3px">صيغة التصدير</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px" id="reportFmtGrid">
+      <button class="rfmt-btn" data-val="pdf" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:9px;padding:12px 8px;cursor:pointer;color:#EAF0F7;font-family:inherit;text-align:center;transition:.15s">
+        <div style="font-size:1.2rem;margin-bottom:4px">📄</div>
+        <div style="font-size:.85rem;font-weight:700">PDF</div>
+        <div style="font-size:.65rem;color:rgba(255,255,255,.45);margin-top:2px">يُطبع من المتصفح</div>
+      </button>
+      <button class="rfmt-btn" data-val="pptx" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:9px;padding:12px 8px;cursor:pointer;color:#EAF0F7;font-family:inherit;text-align:center;transition:.15s">
+        <div style="font-size:1.2rem;margin-bottom:4px">📊</div>
+        <div style="font-size:.85rem;font-weight:700">PowerPoint</div>
+        <div style="font-size:.65rem;color:rgba(255,255,255,.45);margin-top:2px">تنزيل مباشر .pptx</div>
+      </button>
+    </div>
+  </div>
+
+  <div id="reportModalStatus" style="display:none;margin-bottom:14px;padding:10px 12px;border-radius:8px;font-size:.8rem;font-weight:600;background:rgba(201,168,76,.1);color:#C9A84C"></div>
+
+  <button id="reportModalExport" style="width:100%;background:#C9A84C;color:#0D1B2A;border:none;border-radius:9px;padding:12px;font-size:.9rem;font-weight:800;cursor:pointer;font-family:inherit;transition:.15s" disabled>
+    اختر النوع والصيغة أولاً
+  </button>
+</div>`;
+
+    document.body.appendChild(overlay);
+
+    // حالة الاختيار
+    let selType = null, selFmt = null;
+
+    function updateState(){
+      const allTypeBtns = overlay.querySelectorAll(".rtype-btn");
+      const allFmtBtns  = overlay.querySelectorAll(".rfmt-btn");
+      allTypeBtns.forEach(b=>{
+        const active = b.dataset.val === selType;
+        b.style.background = active ? "rgba(201,168,76,.2)" : "rgba(255,255,255,.06)";
+        b.style.borderColor = active ? "rgba(201,168,76,.7)" : "rgba(255,255,255,.12)";
+        b.style.color = active ? "#C9A84C" : "#EAF0F7";
+      });
+      allFmtBtns.forEach(b=>{
+        const active = b.dataset.val === selFmt;
+        b.style.background = active ? "rgba(201,168,76,.2)" : "rgba(255,255,255,.06)";
+        b.style.borderColor = active ? "rgba(201,168,76,.7)" : "rgba(255,255,255,.12)";
+        b.style.color = active ? "#C9A84C" : "#EAF0F7";
+      });
+      const exportBtn = overlay.querySelector("#reportModalExport");
+      if(selType && selFmt){
+        const typeLabel = selType==="comprehensive"?"الشامل":`مسار ${selType}`;
+        const fmtLabel  = selFmt==="pdf"?"PDF":"PowerPoint";
+        exportBtn.disabled = false;
+        exportBtn.textContent = `⬇ تصدير ${typeLabel} — ${fmtLabel}`;
+      } else {
+        exportBtn.disabled = true;
+        exportBtn.textContent = "اختر النوع والصيغة أولاً";
+      }
+    }
+
+    overlay.querySelectorAll(".rtype-btn").forEach(b=>{
+      b.onclick = ()=>{ selType = b.dataset.val; updateState(); };
+    });
+    overlay.querySelectorAll(".rfmt-btn").forEach(b=>{
+      b.onclick = ()=>{ selFmt = b.dataset.val; updateState(); };
+    });
+
+    overlay.querySelector("#reportModalClose").onclick = ()=>{ overlay.style.display="none"; };
+    overlay.onclick = e=>{ if(e.target===overlay) overlay.style.display="none"; };
+
+    overlay.querySelector("#reportModalExport").onclick = async function(){
+      if(!selType || !selFmt) return;
+      const statusEl = overlay.querySelector("#reportModalStatus");
+      const exportBtn = overlay.querySelector("#reportModalExport");
+      exportBtn.disabled = true;
+      exportBtn.textContent = "⏳ جارٍ التوليد...";
+      statusEl.style.display = "block";
+      statusEl.textContent = "⏳ جارٍ توليد التقرير من أحدث البيانات...";
+
+      try{
+        const res = await fetch("/api/report", {
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          credentials:"include",
+          body:JSON.stringify({ type:selType, format:selFmt })
+        });
+        if(!res.ok){
+          const err = await res.json().catch(()=>({error:"خطأ غير معروف"}));
+          throw new Error(err.error || res.status);
+        }
+
+        const dateStr = new Date().toISOString().slice(0,10);
+        const trackLabel = selType==="comprehensive"?"Comprehensive":selType;
+
+        if(selFmt === "pptx"){
+          const blob = await res.blob();
+          const url  = URL.createObjectURL(blob);
+          const a    = document.createElement("a");
+          a.href = url; a.download = `KAGA-${trackLabel}-${dateStr}.pptx`;
+          document.body.appendChild(a); a.click();
+          setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 2000);
+          statusEl.textContent = "✅ تم تنزيل ملف PowerPoint";
+        } else {
           const html = await res.text();
           const blob = new Blob([html],{type:"text/html;charset=utf-8"});
           const url  = URL.createObjectURL(blob);
           const win  = window.open(url,"_blank");
           if(!win){
-            // إذا حُجبت النوافذ المنبثقة — حمّل كملف HTML
             const a = document.createElement("a");
-            a.href=url; a.download=`KAGA-Report-${type}-${new Date().toISOString().slice(0,10)}.html`;
+            a.href=url; a.download=`KAGA-${trackLabel}-${dateStr}.html`;
             document.body.appendChild(a); a.click();
             setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },2000);
           } else {
-            setTimeout(()=>URL.revokeObjectURL(url),10000);
+            setTimeout(()=>URL.revokeObjectURL(url), 10000);
           }
-          if(statusEl){ statusEl.textContent = "✅ تم توليد التقرير — اضغط «تصدير PDF» داخل نافذة التقرير"; }
-          addFeed(["التقارير", `تم تصدير: ${label}`, "green"]);
-
-        }catch(e){
-          if(statusEl){ statusEl.textContent = "❌ فشل التوليد: " + e.message; }
-          addFeed(["التقارير", "فشل تصدير التقرير: " + e.message, "red"]);
-        }finally{
-          btns.forEach(b => b.disabled = false);
-          setTimeout(()=>{ if(statusEl) statusEl.style.display="none"; }, 5000);
+          statusEl.textContent = "✅ تم فتح التقرير — اضغط «تصدير PDF» داخل الصفحة";
         }
-      });
-    });
+
+        addFeed(["التقارير", `تم تصدير: ${selType==="comprehensive"?"الشامل":"مسار "+selType} (${selFmt.toUpperCase()})`, "green"]);
+        setTimeout(()=>{ overlay.style.display="none"; }, 3000);
+
+      }catch(e){
+        statusEl.style.color="#ff5e6b";
+        statusEl.textContent = "❌ فشل التوليد: " + e.message;
+        addFeed(["التقارير", "فشل: " + e.message, "red"]);
+      }finally{
+        exportBtn.disabled = false;
+        if(selType && selFmt){
+          const typeLabel = selType==="comprehensive"?"الشامل":`مسار ${selType}`;
+          exportBtn.textContent = `⬇ تصدير ${typeLabel} — ${selFmt==="pdf"?"PDF":"PowerPoint"}`;
+        }
+      }
+    };
   }
+
+  function bindReportExport(){
+    const btns = document.querySelectorAll("[data-report-type]");
+    const statusEl = document.getElementById("reportExportStatus");
+    if(!btns.length) return;
+    // كل الأزرار القديمة تفتح النافذة الجديدة
+    btns.forEach(btn => btn.addEventListener("click", showReportModal));
+
+    // زر تقرير عام إن وجد
+    const mainBtn = document.getElementById("openReportModal");
+    if(mainBtn) mainBtn.addEventListener("click", showReportModal);
+  }
+
+  // كشف زر التقرير في أي مكان
+  document.addEventListener("click", function(e){
+    if(e.target && (e.target.id==="openReportModal" || e.target.closest("[data-open-report]"))){
+      showReportModal();
+    }
+  });
 
   if(document.readyState === "loading"){
     document.addEventListener("DOMContentLoaded", bindReportExport);
